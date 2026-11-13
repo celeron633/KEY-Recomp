@@ -34,4 +34,5 @@
 - Implement small, independent changes and run the relevant synthetic tests. Distinguish dump validation from successful native execution.
 - Separate directly observed results, user reports, and hypotheses. Do not claim a dependency is validated just because its README says so, or call translation/linking/window creation playable gameplay.
 - Standard check: `python -m unittest discover -s tests -v`. For an existing graphics build, also run the relevant CTest checks; the full command is `ctest --test-dir private/build/graphics --output-on-failure`.
+- Use Conventional Commits: `type(scope): short description` (scope optional). Keep commit messages concise; prefer a single subject line and add a brief body only when essential context is needed.
 - Do not automatically commit, push, or publish. Local implementation and downloading development tools/reference projects are authorized by the project owner.
