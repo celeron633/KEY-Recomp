@@ -88,7 +88,8 @@ bool Memory::template_access(bool enabled) { bool old = state_->template_access_
 bool Memory::interrupt_pending() const { return state_->pi_.pending(); }
 void Memory::set_fifo_sink(FifoSink sink) { state_->fifo_sink_=sink; }
 void Memory::set_fifo_sync(void(*sync)(),bool(*empty)()) { state_->fifo_sync_=sync; state_->fifo_empty_=empty; }
-void Memory::poll_devices() { const auto now=timebase();state_->video_.tick(now); state_->pi_.source(0x100,state_->video_.pending()); state_->ai_.tick(now); state_->pi_.source(0x20,state_->ai_.pending()); sync_gpu_events(); poll_audio_dma(now); }
+void Memory::poll_devices() { poll_devices(timebase()); }
+bool Memory::poll_devices(uint64_t now) { state_->video_.tick(now); state_->pi_.source(0x100,state_->video_.pending()); state_->ai_.tick(now); state_->pi_.source(0x20,state_->ai_.pending()); sync_gpu_events(); return poll_audio_dma(now); }
 std::span<const uint8_t> Memory::ave_register(uint8_t reg) const { return state_->ave_registers_[reg]; }
 void Memory::gpu_finish() { state_->gpu_finish_event_.store(true,std::memory_order_release); }
 void Memory::gpu_token(uint16_t token) { state_->gpu_token_event_.store(0x10000u|token,std::memory_order_release); }
@@ -555,8 +556,9 @@ void Memory::post_dsp_mail(uint32_t value,bool interrupt) {
     state_->dsp_mail_queue_.push_back({value,interrupt});
     if(state_->dsp_mail_queue_.size()==1 && interrupt){state_->dsp_control_|=0x80;state_->pi_.source(0x40,((state_->dsp_control_>>1)&state_->dsp_control_&0xA8)!=0);}
 }
-void Memory::poll_audio_dma(uint64_t now) {
-    if(!(state_->audio_dma_control_&0x8000))return;
+bool Memory::poll_audio_dma(uint64_t now) {
+    if(!(state_->audio_dma_control_&0x8000))return false;
+    bool submitted=false;
     if(state_->audio_dma_start_irq_ && now>=state_->audio_dma_start_irq_){state_->dsp_control_|=8;state_->audio_dma_start_irq_=0;}
     const uint32_t rate=(state_->ai_.read(0,now)&0x40)?32000:48000;
     if(rate!=state_->audio_dma_rate_){state_->audio_dma_rate_=rate;state_->audio_dma_fraction_=0;}
@@ -566,6 +568,7 @@ void Memory::poll_audio_dma(uint64_t now) {
         if(now<state_->audio_dma_tick_+period)break;
         if(n>=1024)throw std::runtime_error("Audio DMA backlog exceeds native scheduling bound");
         state_->audio_sink_(gpu_view(state_->audio_dma_cursor_,32).first(32),rate);
+        submitted=true;
         state_->audio_dma_fraction_=numerator%rate;
         state_->audio_dma_tick_+=period;state_->audio_dma_cursor_+=32;
         if(state_->audio_dma_remaining_)--state_->audio_dma_remaining_;
@@ -576,6 +579,7 @@ void Memory::poll_audio_dma(uint64_t now) {
         }
     }
     state_->pi_.source(0x40,((state_->dsp_control_>>1)&state_->dsp_control_&0xA8)!=0);
+    return submitted;
 }
 Memory& memory() {
     static Memory value;
@@ -587,9 +591,14 @@ Memory& memory() {
     (void)bound;return value;
 }
 void Memory::sync_gpu_events() {
-    if(state_->gpu_finish_event_.exchange(false,std::memory_order_acq_rel)) state_->pe_finish_pending_=true;
-    const auto token=state_->gpu_token_event_.exchange(0,std::memory_order_acq_rel);
-    if(token&0x10000) { state_->pe_registers_[7]=token&0xFFFF; state_->pe_token_pending_=true; }
+    // Leave empty mailboxes shared in cache. A concurrently published event is
+    // either consumed by exchange or remains available for the next poll.
+    if(state_->gpu_finish_event_.load(std::memory_order_acquire) &&
+       state_->gpu_finish_event_.exchange(false,std::memory_order_acq_rel)) state_->pe_finish_pending_=true;
+    if(state_->gpu_token_event_.load(std::memory_order_acquire)) {
+        const auto token=state_->gpu_token_event_.exchange(0,std::memory_order_acq_rel);
+        if(token&0x10000) { state_->pe_registers_[7]=token&0xFFFF; state_->pe_token_pending_=true; }
+    }
     state_->pi_.source(0x200,state_->pe_token_pending_&&(state_->pe_registers_[5]&1));
     state_->pi_.source(0x400,state_->pe_finish_pending_&&(state_->pe_registers_[5]&2));
 }

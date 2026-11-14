@@ -41,7 +41,10 @@ int main() {
         PADClearVirtualStatus(0);
         SDL_Event key{};key.type=SDL_EVENT_KEY_DOWN;key.key.scancode=SDL_SCANCODE_DOWN;key.key.down=true;check(SDL_PushEvent(&key));
         key.type=SDL_EVENT_KEY_UP;key.key.down=false;check(SDL_PushEvent(&key));
-        key::input::poll();
+        const auto sampled=std::chrono::steady_clock::now();
+        check(key::input::poll(sampled));
+        check(!key::input::poll(sampled));
+        check(!key::input::poll(sampled+std::chrono::milliseconds(4)));
         c.gpr[3]=0;c.gpr[4]=0x80005100;key::input::invoke(0x806B6080,c);check((key::memory().read(0x80005100,2)&1)!=0);
         std::this_thread::sleep_for(std::chrono::milliseconds(45));key::input::poll();
         c.gpr[3]=0;c.gpr[4]=0x80005100;key::input::invoke(0x806B6080,c);check(key::memory().read(0x80005100,2)==0);

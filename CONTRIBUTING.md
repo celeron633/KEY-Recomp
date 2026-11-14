@@ -54,9 +54,11 @@ python -m unittest discover -s tests -v
 ctest --test-dir private/build/graphics --output-on-failure
 ```
 
-The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 16 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
+The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 18 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
 
 For memory-path comparisons, set `KEY_DISABLE_INLINE_RAM=1` in the child process environment before launch to use the original checked handlers; omit it for normal operation. Both routes enforce memory policy. Preserve the build manifest and five-second `TIMING` lines, and compare the same scene/input with compilation stopped. `game_root_hz` counts game-root task traversals; display-copy FPS alone is not a measurement of character velocity.
+
+For event-polling comparisons, `KEY_DISABLE_POLL_CLOCK=1` disables sharing the clock sample within a dispatch. It does not disable the VI halfline or GPU mailbox optimizations. Guest timebase/MMIO reads always sample fresh time, and callback/output work invalidates the dispatch sample. The selected mode is logged at startup.
 
 Document what was actually tested, the exact commands/configuration, the expected result, and any failure or untested path. A generated function, a successful link, an open window, and playable gameplay are different milestones. Unknown instructions/services must fail with useful diagnostics; do not bypass game logic or return fake success to advance a test.
 

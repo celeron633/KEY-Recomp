@@ -35,6 +35,9 @@ public:
         const auto total=total_halflines();
         if(!(registers_[1]&1) || !width || !total) return;
         const auto current=pixels(now)/width;
+        // No interrupt target can be crossed while the beam stays in the same
+        // halfline. Register writes still take effect at the next crossing.
+        if(current==last_halfline_)return;
         for(unsigned i=0;i<4;++i) {
             auto& hi=registers_[(0x30+i*4)/2];
             const auto vertical=hi&0x7FF;

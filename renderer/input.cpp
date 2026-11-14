@@ -91,9 +91,11 @@ void key_event(uint32_t scancode,bool down){
 void release_keyboard(){std::lock_guard lock(key_mutex);for(auto& key:keys){key.down=false;key.until={};}if(virtual_keyboard){PADClearVirtualStatus(0);virtual_keyboard=false;}}
 void shutdown(){if(initialized){SDL_RemoveEventWatch(&keyboard_watch,nullptr);release_keyboard();aurora_wpad_shutdown();initialized=false;channels={};completions.clear();}}
 void poll() {
-    if(!initialized)return;
-    const auto now=std::chrono::steady_clock::now();
-    if(now-last_poll<std::chrono::milliseconds(5))return;
+    poll(std::chrono::steady_clock::now());
+}
+bool poll(std::chrono::steady_clock::time_point now) {
+    if(!initialized)return false;
+    if(now-last_poll<std::chrono::milliseconds(5))return false;
     if(std::getenv("KEY_TEST_BUTTON_2") && !test_pulse_done){
         const auto elapsed=now-input_started;
         if(elapsed>=std::chrono::seconds(30) && !test_pulse_active){test_pulse_active=true;std::fprintf(stderr,"INPUT synthetic test: Wii 2 held for 250 ms\n");}
@@ -104,6 +106,7 @@ void poll() {
     if(mask){PADStatus pad{};pad.err=PAD_ERR_NONE;pad.button=mask;PADSetVirtualStatus(0,&pad);virtual_keyboard=true;}
     else if(virtual_keyboard){PADClearVirtualStatus(0);virtual_keyboard=false;}
     last_poll=now;graphics::poll_events();
+    return true;
 }
 std::optional<Completion> next_completion() {
     if(completions.empty())return std::nullopt;

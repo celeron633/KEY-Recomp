@@ -7,6 +7,7 @@
 #include "key/interrupt_progress.h"
 #include "key/dispatch_index.h"
 #include "key/timing_metrics.h"
+#include "key/poll_clock.h"
 #ifdef KEY_WITH_AX
 #include "key/ax.h"
 #endif
@@ -151,10 +152,10 @@ static void service_ios(CpuContext* ctx) {
         }
     }
 }
-static void service_input(CpuContext* ctx) {
+static void service_input(CpuContext* ctx,PollClock& clock) {
 #ifdef KEY_WITH_GRAPHICS
     if(delivering_interrupt || delivering_ios || delivering_input)return;
-    input::poll();
+    if(input::poll(clock.get().host))clock.invalidate();
     if(!(ctx->msr&0x8000))return;
     for(unsigned n=0;n<64;++n) {
         const auto event=input::next_completion();if(!event)break;
@@ -166,31 +167,36 @@ static void service_input(CpuContext* ctx) {
             dispatch(0x8066AF30,ctx);
         } catch(...) {*ctx=saved;delivering_input=false;throw;}
         *ctx=saved;delivering_input=false;MkwApplyHostNiMode(ctx->fpscr);
+        clock.invalidate();
     }
 #endif
 }
 static void idle_pump(CpuContext& ctx) {
     service_ios(&ctx);
-    service_input(&ctx);
-    memory().poll_devices();
+    PollClock clock;
+    service_input(&ctx,clock);
+    if(memory().poll_devices(clock.get().guest))clock.invalidate();
     for(unsigned n=0,stalled=0;n<16 && (ctx.msr&0x8000) && memory().interrupt_pending();++n) {
         const auto acknowledged=interrupt_acks();
         deliver_interrupt(ctx.lr,&ctx);
+        clock.invalidate();
         if(memory().interrupt_pending() && interrupt_acks()==acknowledged){if(++stalled>=4)throw std::runtime_error("Idle device interrupt was not acknowledged");}else stalled=0;
     }
-    if((ctx.msr&0x8000) && decrementer().pending(timebase()))deliver_interrupt(ctx.lr,&ctx,true);
+    if((ctx.msr&0x8000) && decrementer().pending(clock.get().guest))deliver_interrupt(ctx.lr,&ctx,true);
 }
 void dispatch(uint32_t address, CpuContext* ctx) {
     auto& stack=stacks[ctx];
     service_ios(ctx);
-    service_input(ctx);
-    if(!delivering_interrupt && !delivering_ios) memory().poll_devices();
+    PollClock clock;
+    service_input(ctx,clock);
+    if(!delivering_interrupt && !delivering_ios && memory().poll_devices(clock.get().guest))clock.invalidate();
     for(unsigned attempt=0,stalled=0; attempt<16 && !delivering_interrupt && (ctx->msr&0x8000) && memory().interrupt_pending(); ++attempt) {
         const auto acknowledged=interrupt_acks();
         deliver_interrupt(address,ctx);
+        clock.invalidate();
         if(memory().interrupt_pending() && interrupt_acks()==acknowledged){if(++stalled>=4)throw std::runtime_error("External device interrupt was not acknowledged");}else stalled=0;
     }
-    if(!delivering_interrupt && !delivering_ios && !delivering_input && (ctx->msr&0x8000) && decrementer().pending(timebase()))deliver_interrupt(address,ctx,true);
+    if(!delivering_interrupt && !delivering_ios && !delivering_input && (ctx->msr&0x8000) && decrementer().pending(clock.get().guest))deliver_interrupt(address,ctx,true);
     if(!delivering_interrupt && !delivering_ios && !delivering_input)scheduler::poll(*ctx);
     if (++calls > call_limit) throw std::runtime_error("Probe call budget exceeded during active guest execution");
     if(address==0x806459E0){
@@ -358,6 +364,7 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> file((std::istreambuf_iterator<char>(input)), {});
         if (file.size() < 0x100) throw std::runtime_error("Truncated DOL");
         validate_digest(file);
+        std::fprintf(stderr,"TIMING dispatch clock reuse %s\n",key::reuse_poll_clock?"enabled":"disabled (diagnostic reference mode)");
         const auto sys_directory=std::filesystem::path(argv[1]).parent_path();
         const auto boot=read_boot_file(sys_directory/"boot.bin",0x440,0x440);
         if(std::memcmp(boot.data(),"RK5E01",6)!=0 || boot[7]!=0) throw std::runtime_error("Boot header version mismatch");

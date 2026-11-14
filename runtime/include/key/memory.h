@@ -35,6 +35,8 @@ public:
 
     void fifo_bytes(const uint8_t* data,size_t length);
     void poll_devices();
+    // Returns true when host audio output ran and the caller must resample time.
+    bool poll_devices(uint64_t now);
 
     void ave_write(uint32_t device,uint32_t source,uint32_t size);
     std::span<const uint8_t> ave_register(uint8_t reg) const;
@@ -52,7 +54,7 @@ public:
     using AudioSink=void(*)(std::span<const uint8_t>,uint32_t);
     void set_audio_sink(AudioSink sink);
 
-    void poll_audio_dma(uint64_t now);
+    bool poll_audio_dma(uint64_t now);
     // Host loading is explicit. Guest accesses cannot modify executable bytes.
 private:
     struct State;

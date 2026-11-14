@@ -11,13 +11,13 @@ int main(){
     m.fill(0x6000,32,0);m.fill(0x6020,32,1);
     m.write(0xCC003000,0x10100,4);m.write(0xCC003004,0x40,4);
     m.write(0xCC00500A,0x14,2);m.write(0xCC005030,0,2);m.write(0xCC005032,0x6000,2);m.write(0xCC005036,0x8002,2);
-    const auto start=key::timebase();m.poll_audio_dma(start+1000);
+    const auto start=key::timebase();check(!m.poll_audio_dma(start+1000));
     check(m.interrupt_pending() && blocks==0);
     m.write(0xCC00500A,0x1C,2);check(!m.interrupt_pending());
-    m.poll_audio_dma(start+key::timebase_hz*16/32000+1000);
+    check(m.poll_devices(start+key::timebase_hz*16/32000+1000));
     check(blocks==2 && m.interrupt_pending());
     m.write(0xCC005036,0,2);m.write(0xCC00500A,0x1C,2);
-    m.poll_audio_dma(start+key::timebase_hz);check(blocks==2 && !m.interrupt_pending());
+    check(!m.poll_devices(start+key::timebase_hz));check(blocks==2 && !m.interrupt_pending());
     m.reset();m.write(0xCC003000,0x10100,4);m.write(0xCC003004,0x40,4);m.write(0xCC00500A,0x100,2);
     m.post_dsp_mail(0xDCD10004,true);m.post_dsp_mail(0xDCD10002,true);check(m.interrupt_pending());
     m.write(0xCC00500A,0x180,2);check(!m.interrupt_pending());
