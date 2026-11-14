@@ -5,6 +5,8 @@
 #include "key/ios.h"
 #include "key/scheduler.h"
 #include "key/interrupt_progress.h"
+#include "key/dispatch_index.h"
+#include "key/timing_metrics.h"
 #ifdef KEY_WITH_AX
 #include "key/ax.h"
 #endif
@@ -191,6 +193,12 @@ void dispatch(uint32_t address, CpuContext* ctx) {
     if(!delivering_interrupt && !delivering_ios && !delivering_input && (ctx->msr&0x8000) && decrementer().pending(timebase()))deliver_interrupt(address,ctx,true);
     if(!delivering_interrupt && !delivering_ios && !delivering_input)scheduler::poll(*ctx);
     if (++calls > call_limit) throw std::runtime_error("Probe call budget exceeded during active guest execution");
+    if(address==0x806459E0){
+        // Hash-pinned symbol metadata identifies Task::PollTask and the game
+        // root singleton. Count traversals without changing task execution.
+        const auto root=memory().read(0x808E5D84,4);
+        if(root && ctx->gpr[3]==root)++timing_counters.game_root_polls;
+    }
     if(stack.size()>=256)throw std::runtime_error("Guest call depth exceeded 256");
     if(calls<=5000) std::fprintf(stderr, "CALL %08X lr=%08X sp=%08X\n", address, ctx->lr, ctx->gpr[1]);
     else if(calls%100000==0) std::fprintf(stderr,"PROGRESS guest calls=%llu target=%08X\n",static_cast<unsigned long long>(calls),address);
@@ -237,9 +245,9 @@ void dispatch(uint32_t address, CpuContext* ctx) {
     if (address == 0x60) throw std::runtime_error("Unimplemented low-memory debug vector 0x60 (__OSDBJump boundary)");
     if (address >= 0x806627D0 && address < 0x80662868)
         throw std::runtime_error("Exception template is data-only until native exception dispatch exists");
-    const auto found=std::lower_bound(std::begin(registrations),std::end(registrations),address,
-        [](const Registration& r,uint32_t value){return r.address<value;});
-    if(found!=std::end(registrations) && found->address==address) {
+    static const DispatchIndex<Registration> index(registrations);
+    const auto found=index.find(address);
+    if(found) {
         const auto& registration=*found;
         const auto created_thread=address==0x8066B4B0?ctx->gpr[3]:0;
         stack.push_back(address);

@@ -7,11 +7,13 @@
 #include <memory>
 
 namespace key {
+struct FastMemoryView;
 class Memory {
 public:
     static constexpr uint32_t mem1_size = 24 * 1024 * 1024;
     Memory();
     ~Memory();
+    FastMemoryView fast_view();
     void reset();
     uint64_t read(uint32_t address, unsigned width) const;
     void write(uint32_t address, uint64_t value, unsigned width);

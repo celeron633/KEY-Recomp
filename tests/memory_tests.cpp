@@ -65,6 +65,25 @@ int main() {
     memory.fill(0xC0007000,64,1);require(memory.read(0x80007000,4)==0x01010101);
     memory.reset();
     require(memory.read(0x5000, 4) == 0);
+    // Scalar fast paths must agree with an independent byte-wise BE oracle,
+    // including unaligned integer access and page-crossing stores.
+    for(unsigned width:{1u,2u,4u,8u})for(unsigned shift=0;shift<16;++shift){
+        const uint32_t address=0x80009FF8+shift;
+        if(width==8 && address%4)continue;
+        const uint64_t value=0x81A2C3E405264768ull+shift;
+        memory.write(address,value,width);
+        uint64_t expected=0;
+        for(unsigned i=0;i<width;++i){
+            const auto byte=(value>>(8*(width-1-i)))&255;
+            require(memory.read(address+i,1)==byte);expected=(expected<<8)|byte;
+        }
+        require(memory.read(address,width)==expected);
+        require(memory.read(address+0x40000000u,width)==expected);
+    }
+    for(unsigned width:{0u,3u,16u}){
+        fails([&]{memory.read(0x80009000,width);});
+        fails([&]{memory.write(0x80009000,0,width);});
+    }
     memory.write(0x6000, 1, 4);
     require(memory.read(0x6000, 4) == 1);
     std::puts("PASS: endian/aliases/alignment/bounds/MMIO/lowmem/code-write/reset");

@@ -3,6 +3,9 @@
 #include "command_bridge.h"
 #include "key/memory.h"
 #include "key/input.h"
+#include "key/clock.h"
+#include "key/timing_metrics.h"
+#include "audio_output.h"
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 #include <aurora/gfx.h>
@@ -15,7 +18,10 @@
 #include <cstdio>
 #include <stdexcept>
 #include <array>
+#include <chrono>
 #include "gx/gx.hpp"
+#include "webgpu/gpu.hpp"
+#include <string_view>
 #include <imgui.h>
 
 namespace key::graphics {
@@ -31,9 +37,33 @@ struct State {
     AuroraReadbackStream probes=0;
     std::vector<AuroraReadbackStream> draw_probes;
     bool draw_probe_reported=false;
+    std::chrono::steady_clock::time_point timing_start{};
+    uint64_t timing_guest=0,timing_frames=0,timing_audio=0,timing_audio_wait=0;
+    uint64_t boundary_ns=0,sync_ns=0;
+    TimingCounters timing_previous{};
     ~State() { if(initialized) shutdown(); }
 };
 State& state() { static State value; return value; }
+void report_timing() {
+    auto& s=state();
+    const auto now=std::chrono::steady_clock::now();
+    const auto guest=timebase();const auto audio=audio_output_stats();
+    if(s.timing_start.time_since_epoch().count()) {
+        const double wall=std::chrono::duration<double>(now-s.timing_start).count();
+        if(wall<5)return;
+        const double guest_seconds=double(guest-s.timing_guest)/timebase_hz;
+        std::fprintf(stderr,"TIMING wall=%.3fs guest_ratio=%.4f copies_fps=%.2f game_root_hz=%.2f vi_events_hz=%.2f pcm_KiB_s=%.2f idle_ms=%.2f boundary_ms=%.2f fifo_sync_ms=%.2f audio_wait_ms=%.2f\n",
+            wall,guest_seconds/wall,(s.frame_count-s.timing_frames)/wall,
+            (timing_counters.game_root_polls-s.timing_previous.game_root_polls)/wall,
+            (timing_counters.video_events-s.timing_previous.video_events)/wall,
+            (audio.submitted_bytes-s.timing_audio)/wall/1024,
+            (timing_counters.scheduler_wait_ns-s.timing_previous.scheduler_wait_ns)/1e6,
+            s.boundary_ns/1e6,s.sync_ns/1e6,(audio.waited_ns-s.timing_audio_wait)/1e6);
+    }
+    s.timing_start=now;s.timing_guest=guest;s.timing_frames=s.frame_count;
+    s.timing_audio=audio.submitted_bytes;s.timing_audio_wait=audio.waited_ns;
+    s.timing_previous=timing_counters;s.boundary_ns=s.sync_ns=0;
+}
 void log(AuroraLogLevel level,const char* module,const char* message,unsigned int length) {
     if(level>=LOG_WARNING) std::fprintf(stderr,"GRAPHICS %s: %.*s\n",module,static_cast<int>(length),message);
 }
@@ -61,12 +91,20 @@ void initialize(const std::string& private_root,bool hidden) {
     AuroraConfig config{};
     config.appName="KEY-Recomp"; config.userPath=s.user.c_str(); config.cachePath=s.cache.c_str(); config.resourcesPath=s.resources.c_str();
     config.desiredBackend=BACKEND_D3D12; config.windowWidth=1280; config.windowHeight=720;
+    config.allowCpuAdapter=false;
     config.vsync=true; config.msaa=1; config.maxTextureAnisotropy=8; config.startHidden=hidden;
     config.pauseOnFocusLost=false; config.logCallback=&log; config.logLevel=LOG_WARNING;
     char name[]="KEY-Recomp"; char* argv[]={name};
     const auto info=aurora_initialize(1,argv,&config);
     if(info.initializationStatus!=AURORA_INITIALIZATION_SUCCESS) throw std::runtime_error(info.initializationError?info.initializationError:"Native graphics initialization failed");
     s.initialized=true;
+    const auto& adapter=aurora::webgpu::g_adapterInfo;
+    const auto device=adapter.device.IsUndefined()?std::string_view{"Unknown"}:std::string_view{adapter.device};
+    const auto driver=adapter.description.IsUndefined()?std::string_view{"Unknown"}:std::string_view{adapter.description};
+    std::fprintf(stderr,"GRAPHICS adapter: backend=%u type=%u device=%.*s driver=%.*s vendor=%04X device_id=%04X cpu_adapter_allowed=0\n",
+        unsigned(info.backend),unsigned(adapter.adapterType),int(device.size()),device.data(),int(driver.size()),driver.data(),adapter.vendorID,adapter.deviceID);
+    if(info.backend!=BACKEND_D3D12 || adapter.adapterType==wgpu::AdapterType::CPU)
+        throw std::runtime_error("Native renderer requires a hardware Direct3D 12 adapter");
     if(std::getenv("KEY_DEBUG_PIXELS"))s.probes=AuroraReadbackCreateStream();
     aurora_set_skip_unready_pipelines(false);
     aurora_set_frame_interpolation_fps(0);
@@ -117,7 +155,9 @@ void present() {
     // copy completes a display frame; an unrelated wait must not split a draw.
     if(s.presented_copy==s.bridge->display_copies() || !s.bridge->empty()){poll_events();return;}
     s.presented_copy=s.bridge->display_copies();
+    const auto boundary_start=std::chrono::steady_clock::now();
     sync();
+    s.sync_ns+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-boundary_start).count();
     if(!s.draw_probe_reported && s.frame_count>=3005 && !s.draw_probes.empty()){
         unsigned found=0;
         for(size_t i=0;i<s.draw_probes.size();++i){uint32_t pixel=0;AuroraReadbackDest out{1,&pixel,4,GX_FALSE};if(AuroraReadbackGet(s.draw_probes[i],&out,1)&&out.found){++found;std::fprintf(stderr,"DRAWPIXEL index=%zu nonblack=%d\n",i,(pixel&0xFFFFFF)!=0);}}
@@ -139,6 +179,8 @@ void present() {
     if(s.pending_mode) { VIConfigure(&*s.pending_mode); s.pending_mode.reset(); }
     s.frame_active=aurora_begin_frame();
     if(!s.frame_active) throw std::runtime_error("Native renderer paused unexpectedly");
+    s.boundary_ns+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-boundary_start).count();
+    report_timing();
 }
 void poll_events() {
     for(auto* event=aurora_update();event && event->type!=AURORA_NONE;++event){

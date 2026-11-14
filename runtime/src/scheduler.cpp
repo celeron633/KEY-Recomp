@@ -3,6 +3,7 @@
 // mutex inheritance, creation and termination remain in translated game code.
 #include "key/scheduler.h"
 #include "key/memory.h"
+#include "key/timing_metrics.h"
 #include <windows.h>
 #include <bit>
 #include <chrono>
@@ -121,7 +122,9 @@ void select(CpuContext& ctx,bool yielding) {
             ctx.msr|=0x8000;
             pump_events(ctx);
             if(std::chrono::steady_clock::now()>until)throw std::runtime_error("Native scheduler idle: no runnable thread after 10 seconds");
+            const auto wait_start=std::chrono::steady_clock::now();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            timing_counters.scheduler_wait_ns+=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-wait_start).count();
         }
         ctx=saved;
     }

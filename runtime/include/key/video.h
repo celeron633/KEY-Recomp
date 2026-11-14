@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 #include "key/clock.h"
+#include "key/timing_metrics.h"
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -28,11 +29,12 @@ public:
             registers_[reg/2]=static_cast<uint16_t>(value);
         }
     }
-    void tick() {
+    void tick() { tick(timebase()); }
+    void tick(uint64_t now) {
         const auto width=registers_[3]&0x3FF;
         const auto total=total_halflines();
         if(!(registers_[1]&1) || !width || !total) return;
-        const auto current=pixels(timebase())/width;
+        const auto current=pixels(now)/width;
         for(unsigned i=0;i<4;++i) {
             auto& hi=registers_[(0x30+i*4)/2];
             const auto vertical=hi&0x7FF;
@@ -41,7 +43,10 @@ public:
             if(target>=total) continue;
             const auto last_period=last_halfline_/total;
             const auto next=(last_halfline_%total<target?last_period:last_period+1)*total+target;
-            if(next<=current) hi|=0x8000;
+            if(next<=current) {
+                if(hi&0x1000)timing_counters.video_events+=(current-next)/total+1;
+                hi|=0x8000;
+            }
         }
         last_halfline_=current;
     }

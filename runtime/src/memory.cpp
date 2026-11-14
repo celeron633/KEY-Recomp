@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "key/memory.h"
+#include "key/memory_fast.h"
 #include "key/pi.h"
 #include "key/ipl.h"
 #include "key/video.h"
@@ -12,6 +13,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+#include <bit>
 #include "key/clock.h"
 #ifdef KEY_WITH_AX
 #include "key/ax.h"
@@ -24,6 +27,7 @@ struct Memory::State {
     bool mem2_mapped_=false;
     std::array<bool, 0x4000> low_known_{};
     std::vector<std::pair<uint32_t, uint32_t>> executable_;
+    std::array<uint8_t,0x5800> executable_pages_{};
     std::vector<uint32_t> template_words_;
     bool template_access_ = false;
     ProcessorInterface pi_;
@@ -73,11 +77,18 @@ struct Memory::State {
 };
 Memory::Memory():state_(std::make_unique<State>()){}
 Memory::~Memory()=default;
+FastMemoryView fast_memory_view;
+FastMemoryView Memory::fast_view(){
+    const auto* reference=std::getenv("KEY_DISABLE_INLINE_RAM");
+    const bool disabled=reference && std::strcmp(reference,"1")==0;
+    return {this,disabled?nullptr:state_->bytes_.data(),&state_->mem2_mapped_,state_->executable_pages_.data(),
+        state_->gpu_copies_.page_masks(),&state_->write_revision_,state_->page_versions_.data()};
+}
 bool Memory::template_access(bool enabled) { bool old = state_->template_access_; state_->template_access_ = enabled; return old; }
 bool Memory::interrupt_pending() const { return state_->pi_.pending(); }
 void Memory::set_fifo_sink(FifoSink sink) { state_->fifo_sink_=sink; }
 void Memory::set_fifo_sync(void(*sync)(),bool(*empty)()) { state_->fifo_sync_=sync; state_->fifo_empty_=empty; }
-void Memory::poll_devices() { state_->video_.tick(); state_->pi_.source(0x100,state_->video_.pending()); state_->ai_.tick(timebase()); state_->pi_.source(0x20,state_->ai_.pending()); sync_gpu_events(); poll_audio_dma(timebase()); }
+void Memory::poll_devices() { const auto now=timebase();state_->video_.tick(now); state_->pi_.source(0x100,state_->video_.pending()); state_->ai_.tick(now); state_->pi_.source(0x20,state_->ai_.pending()); sync_gpu_events(); poll_audio_dma(now); }
 std::span<const uint8_t> Memory::ave_register(uint8_t reg) const { return state_->ave_registers_[reg]; }
 void Memory::gpu_finish() { state_->gpu_finish_event_.store(true,std::memory_order_release); }
 void Memory::gpu_token(uint16_t token) { state_->gpu_token_event_.store(0x10000u|token,std::memory_order_release); }
@@ -87,7 +98,21 @@ static std::runtime_error access_error(const char* reason, uint32_t address) {
     std::snprintf(message, sizeof(message), "%s at guest address 0x%08X", reason, address);
     return std::runtime_error(message);
 }
-uint32_t Memory::offset(uint32_t address, size_t size) const {
+template<class T> static T swap_guest_order(T value) {
+    if constexpr(std::endian::native==std::endian::little) {
+        if constexpr(sizeof(T)==2)return __builtin_bswap16(value);
+        if constexpr(sizeof(T)==4)return __builtin_bswap32(value);
+        if constexpr(sizeof(T)==8)return __builtin_bswap64(value);
+    }
+    return value;
+}
+template<class T> static T load_guest_scalar(const uint8_t* data) {
+    T value;std::memcpy(&value,data,sizeof(value));return swap_guest_order(value);
+}
+template<class T> static void store_guest_scalar(uint8_t* data,T value) {
+    value=swap_guest_order(value);std::memcpy(data,&value,sizeof(value));
+}
+[[gnu::always_inline]] inline uint32_t Memory::offset(uint32_t address, size_t size) const {
     uint32_t off;
     if (address < mem1_size) off = address;
     else if (address >= 0x80000000u && address < 0x80000000u + mem1_size) off = address - 0x80000000u;
@@ -109,8 +134,9 @@ void Memory::configure_retail_mapping() {
         read(0x80003120,4)!=0x93600000) throw std::runtime_error("Unsupported BAT memory profile");
     state_->bytes_.resize(mem1_size+0x04000000,0);
     state_->mem2_mapped_=true;
+    if(fast_memory_view.owner==this)fast_memory_view=fast_view();
 }
-void Memory::reset() { state_->gpu_copies_.clear(); std::fill(state_->bytes_.begin(), state_->bytes_.end(), 0); state_->executable_.clear(); state_->low_known_.fill(false); state_->template_words_.clear(); state_->template_access_=false; state_->mem2_mapped_=false; state_->pi_.reset(); state_->ipc_mask_=0; state_->mi_mask_=0; state_->dsp_control_=4; state_->ai_.reset(); state_->exi_status_={0x800,0x880,0}; state_->exi_registers_={}; state_->si_poll_=0x01EC0000; state_->si_csr_=state_->si_status_=0; state_->si_buffer_.fill(0); state_->vi_clock_=1; state_->ipl_.reset(); state_->dsp_image_valid_=state_->dsp_mail_valid_=false; state_->dsp_mail_value_=state_->dsp_cpu_mail_=state_->dsp_boot_command_=state_->dsp_task_fields_=0; state_->dsp_rom_=true; state_->dsp_task_={}; state_->dsp_mail_queue_.clear(); state_->audio_dma_source_=state_->audio_dma_cursor_=state_->audio_dma_control_=state_->audio_dma_remaining_=0; state_->audio_dma_tick_=state_->audio_dma_start_irq_=0; state_->audio_sink_=nullptr; state_->boot_dma_count_=0; state_->ar_info_=0; state_->ar_dma_={}; state_->audio_pll_={}; state_->boot_aram_.fill(0); state_->video_.reset(); for(auto& reg:state_->ave_registers_) reg.clear(); state_->fifo_sink_=nullptr; state_->mi_protection_=state_->mi_unknown_=0; state_->ipc_control_=state_->ipc_message_=state_->ipc_irq_flags_=0; state_->fifo_sync_=nullptr; state_->fifo_empty_=nullptr; state_->cp_registers_={}; state_->pe_registers_={}; state_->pe_token_pending_=state_->pe_finish_pending_=false; state_->gpu_token_event_=0; state_->gpu_finish_event_=false; const auto epoch=state_->write_revision_.fetch_add(1)+1; for(auto& page:state_->page_versions_) page.store(epoch); }
+void Memory::reset() { state_->gpu_copies_.clear(); std::fill(state_->bytes_.begin(), state_->bytes_.end(), 0); state_->executable_.clear(); state_->executable_pages_.fill(0); state_->low_known_.fill(false); state_->template_words_.clear(); state_->template_access_=false; state_->mem2_mapped_=false; state_->pi_.reset(); state_->ipc_mask_=0; state_->mi_mask_=0; state_->dsp_control_=4; state_->ai_.reset(); state_->exi_status_={0x800,0x880,0}; state_->exi_registers_={}; state_->si_poll_=0x01EC0000; state_->si_csr_=state_->si_status_=0; state_->si_buffer_.fill(0); state_->vi_clock_=1; state_->ipl_.reset(); state_->dsp_image_valid_=state_->dsp_mail_valid_=false; state_->dsp_mail_value_=state_->dsp_cpu_mail_=state_->dsp_boot_command_=state_->dsp_task_fields_=0; state_->dsp_rom_=true; state_->dsp_task_={}; state_->dsp_mail_queue_.clear(); state_->audio_dma_source_=state_->audio_dma_cursor_=state_->audio_dma_control_=state_->audio_dma_remaining_=0; state_->audio_dma_tick_=state_->audio_dma_start_irq_=0; state_->audio_sink_=nullptr; state_->boot_dma_count_=0; state_->ar_info_=0; state_->ar_dma_={}; state_->audio_pll_={}; state_->boot_aram_.fill(0); state_->video_.reset(); for(auto& reg:state_->ave_registers_) reg.clear(); state_->fifo_sink_=nullptr; state_->mi_protection_=state_->mi_unknown_=0; state_->ipc_control_=state_->ipc_message_=state_->ipc_irq_flags_=0; state_->fifo_sync_=nullptr; state_->fifo_empty_=nullptr; state_->cp_registers_={}; state_->pe_registers_={}; state_->pe_token_pending_=state_->pe_finish_pending_=false; state_->gpu_token_event_=0; state_->gpu_finish_event_=false; const auto epoch=state_->write_revision_.fetch_add(1)+1; for(auto& page:state_->page_versions_) page.store(epoch); }
 void Memory::capture_dsp_boot_image(uint32_t address) {
     for(unsigned i=0;i<128;++i) state_->dsp_boot_image_[i]=static_cast<uint8_t>(read(address+i,1));
     state_->dsp_image_valid_=true;
@@ -132,6 +158,9 @@ void Memory::add_template_word(uint32_t address) {
 }
 uint64_t Memory::read(uint32_t address, unsigned width) const {
     auto physical = address >= 0xC0000000u ? address - 0xC0000000u : address;
+    // RAM takes the common path without walking every device register. The
+    // bounds, boot-memory and GPU-copy checks below still apply to every load.
+    if(physical<0x0C000000u || physical>=0x0E000000u)goto checked_ram;
     if(physical>=0x0C000000 && physical<0x0C000068 && width==2 && !(physical%2)) {
         const auto reg=physical-0x0C000000;
         if(reg==0) {
@@ -199,6 +228,7 @@ uint64_t Memory::read(uint32_t address, unsigned width) const {
         if(width!=4 || address%4) throw access_error("PI requires aligned 32-bit read", address);
         return state_->pi_.read(physical-0x0C003000);
     }
+checked_ram:
     if (width != 1 && width != 2 && width != 4 && width != 8) throw std::runtime_error("Invalid read width");
     // Gekko scalar integer loads support unaligned RAM addresses. MMIO keeps
     // its device-specific alignment checks; FP instruction adapters check theirs.
@@ -207,12 +237,19 @@ uint64_t Memory::read(uint32_t address, unsigned width) const {
     state_->gpu_copies_.read(off,width);
     for (unsigned i = 0; i < width && off + i < state_->low_known_.size(); ++i)
         if (!state_->low_known_[off + i]) throw access_error("Boot low-memory contract not established", address);
-    uint64_t result = 0;
-    for (unsigned i = 0; i < width; ++i) result = (result << 8) | state_->bytes_[off + i];
-    return result;
+    const auto* data=state_->bytes_.data()+off;
+    switch(width) {
+    case 1:return *data;
+    case 2:return load_guest_scalar<uint16_t>(data);
+    case 4:return load_guest_scalar<uint32_t>(data);
+    default:return load_guest_scalar<uint64_t>(data);
+    }
 }
 void Memory::write(uint32_t address, uint64_t value, unsigned width) {
     auto physical = address >= 0xC0000000u ? address - 0xC0000000u : address;
+    // Keep RAM policy checks on the fast path; only device addresses need the
+    // register decoder. Unknown addresses still fail through offset().
+    if(physical<0x0C000000u || physical>=0x0E000000u)goto checked_ram;
     if(physical>=0x0C000000 && physical<0x0C000068 && width==2 && !(physical%2)) {
         const auto reg=physical-0x0C000000;
         if(reg==2 || reg==4 || reg==6 || reg==0xA || (reg>=0x20 && reg<=0x3E)) {
@@ -409,6 +446,7 @@ void Memory::write(uint32_t address, uint64_t value, unsigned width) {
         state_->pi_.write(physical-0x0C003000, static_cast<uint32_t>(value));
         return;
     }
+checked_ram:
     if (width != 1 && width != 2 && width != 4 && width != 8) throw std::runtime_error("Invalid write width");
     if (width==8 && address%4) throw access_error("Unaligned doubleword guest write", address);
     auto off = offset(address, width);
@@ -417,7 +455,13 @@ void Memory::write(uint32_t address, uint64_t value, unsigned width) {
     for (auto [begin, end] : state_->executable_)
         if (off < end && off + width > begin && !template_write) throw access_error("Executable write requires explicit code invalidation model", address);
     cpu_overwrite(off,width);
-    for (unsigned i = 0; i < width; ++i) state_->bytes_[off + i] = static_cast<uint8_t>(value >> (8 * (width - 1 - i)));
+    auto* data=state_->bytes_.data()+off;
+    switch(width) {
+    case 1:*data=static_cast<uint8_t>(value);break;
+    case 2:store_guest_scalar(data,static_cast<uint16_t>(value));break;
+    case 4:store_guest_scalar(data,static_cast<uint32_t>(value));break;
+    default:store_guest_scalar(data,value);break;
+    }
     touch(off,width);
     for (unsigned i = 0; i < width && off + i < state_->low_known_.size(); ++i) state_->low_known_[off + i] = true;
 }
@@ -446,7 +490,10 @@ void Memory::load(uint32_t address, const uint8_t* source, size_t size, bool exe
     std::copy_n(source, size, state_->bytes_.begin() + off);
     touch(off,size);
     for (size_t i = 0; i < size && off + i < state_->low_known_.size(); ++i) state_->low_known_[off + i] = true;
-    if (executable) state_->executable_.emplace_back(off, off + static_cast<uint32_t>(size));
+    if (executable) {
+        state_->executable_.emplace_back(off, off + static_cast<uint32_t>(size));
+        if(size)for(size_t page=off/4096;page<=(off+size-1)/4096;++page)state_->executable_pages_[page]=1;
+    }
 }
 void Memory::write_bytes(uint32_t address,std::span<const uint8_t> data) {
     const auto off=offset(address,data.size());
@@ -530,7 +577,15 @@ void Memory::poll_audio_dma(uint64_t now) {
     }
     state_->pi_.source(0x40,((state_->dsp_control_>>1)&state_->dsp_control_&0xA8)!=0);
 }
-Memory& memory() { static Memory value; return value; }
+Memory& memory() {
+    static Memory value;
+    static const bool bound=[] {
+        fast_memory_view=value.fast_view();
+        std::fprintf(stderr,"MEMORY inline checked RAM %s\n",fast_memory_view.bytes?"enabled":"disabled (diagnostic reference path)");
+        return true;
+    }();
+    (void)bound;return value;
+}
 void Memory::sync_gpu_events() {
     if(state_->gpu_finish_event_.exchange(false,std::memory_order_acq_rel)) state_->pe_finish_pending_=true;
     const auto token=state_->gpu_token_event_.exchange(0,std::memory_order_acq_rel);
@@ -568,7 +623,7 @@ void Memory::notify_gpu_write(const void* host,size_t size) {
     touch(static_cast<uint32_t>(p-base),size);
 }
 void Memory::mark_gpu_copy(uint32_t address,size_t size){gpu_writable(address,size);state_->gpu_copies_.mark(offset(address,size),size);}
-void Memory::cpu_overwrite(uint32_t off,size_t size){
+[[gnu::always_inline]] inline void Memory::cpu_overwrite(uint32_t off,size_t size){
     if(state_->gpu_copies_.overlaps(off,size) && state_->fifo_sync_)state_->fifo_sync_();
     state_->gpu_copies_.overwrite(off,size);
 }

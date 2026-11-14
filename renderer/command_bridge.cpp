@@ -209,7 +209,9 @@ void CommandBridge::bp_write(uint32_t value) {
         const auto width=stride?stride*16:((extent&0x3FF)+16)&~15u;
         writable_((bp_[0x4B]&0xFFFFFF)<<5,size_t(width)*lines*2);
     }
-    std::vector<uint8_t> command{0x61};u32(command,(reg<<24)|forwarded);emit_(command);
+    const std::array<uint8_t,5> command{0x61,static_cast<uint8_t>(reg),
+        static_cast<uint8_t>(forwarded>>16),static_cast<uint8_t>(forwarded>>8),static_cast<uint8_t>(forwarded)};
+    emit_(command);
     if(reg==0x52 && (merged&(1u<<14)))++display_copies_;
     if(texture_register && kind==5) {
         const auto address=(merged&0xFFFFFF)<<5;

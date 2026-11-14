@@ -29,6 +29,8 @@ The PCM backlog exit reported after a window click has been addressed with outpu
 
 The latest local build also corrects MEM2 palette-address truncation, which could cause invalid colors or an unmapped-memory stop during drawing. Synthetic regression checks pass; the earlier first-level crash sequence and complete gameplay loop still need validation.
 
+Rendering uses hardware Direct3D 12; the RTX 3060 was verified on the development PC. Inline checked RAM access and runtime optimizations are installed, and the owner reports substantially better speed. Complex scenes can still fall below 60 Hz; full-speed compatibility is not yet established.
+
 ## Prepare local input
 
 The extraction tool requires Python 3.10+ and a DolphinTool build with the `header` and `extract` commands. Run these commands from the project root, adapting the local paths as needed:

@@ -6,6 +6,8 @@ See [CURRENT-RUN.md](CURRENT-RUN.md) for the detailed handoff. The local `privat
 
 After installation, the owner confirmed: "fixed, tested myself". This is owner verification of the fix; the exact tested sequence and full first-level acceptance loop have not been independently recorded.
 
+**Performance follow-up — improved, with heavy-scene drops remaining:** the latest installed build uses inline checked RAM access, an indexed function dispatcher, and tighter GPU hazard tracking. The owner reports "much better than before". The latest 60-second gameplay sample averaged 51.38 display copies and game-root traversals per second (range 42.78–57.48), with a 1.0000x timebase and no audio-output waits. This is not a fixed-input before/after comparison or proof of consistent 60 Hz. Hardware Direct3D 12 rendering on the RTX 3060 is directly verified; CPU rendering is disabled. See P4-002 and CURRENT-RUN.md for evidence and remaining work.
+
 ## Current milestone
 
 - P2: native main-loop milestone reached. Full exception, floating-point, and device correctness remain under validation.
@@ -17,7 +19,7 @@ After installation, the owner confirmed: "fixed, tested myself". This is owner v
 
 ## Validation baseline
 
-The latest runtime verification passed **13 CTest cases and 19 Python tests**, including Wii MEM1/MEM2 palette transfers, clock suspension, and PCM backpressure. The palette regression failed against the old bridge before the fix. Earlier independent graphics readback/input smoke tests and real-DOL poisoned-BSS checks also passed. These results and manual observations are distinct evidence; none establishes full-game correctness. The historical pre-commit baseline was 12 CTest cases and 19 Python tests.
+The latest runtime verification passed **16 CTest cases and 19 Python tests**, including inline/reference memory-policy checks, the native dispatch index, Wii palette transfers, clock suspension, and PCM backpressure. Incorrect-DOL rejection and hardware D3D12 pixel readback also passed. Earlier input and real-DOL poisoned-BSS checks remain separate evidence. These results and manual observations do not establish full-game correctness. The historical pre-commit baseline was 12 CTest cases and 19 Python tests.
 
 The native DOL build profile contains approximately 32,674 functions, excluding native services and 14 functions with unsafe `rfi` lowering. Historical translation experiments generated a different set of 32,737 functions; code generation counts are not execution or semantic coverage.
 
