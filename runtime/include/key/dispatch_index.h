@@ -26,7 +26,7 @@ public:
             entry=static_cast<uint16_t>(i+1);
         }
     }
-    const Record* find(uint32_t address) const noexcept {
+    [[gnu::always_inline]] const Record* find(uint32_t address) const noexcept {
         if(address&3)return nullptr;
         const auto& page=pages_[address>>16];
         if(!page)return nullptr;

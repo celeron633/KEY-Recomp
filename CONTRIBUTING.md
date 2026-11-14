@@ -56,7 +56,7 @@ python -m unittest discover -s tests -v
 ctest --test-dir private/build/graphics --output-on-failure
 ```
 
-The CTest command requires an existing configured/built graphics tree. The controller follow-up baseline is 19 Python tests and 20 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. The separate SDL/WPAD smoke executable is now `private/build/graphics/controller/input_smoke.exe`; see [controller validation](docs/CONTROLLERS.md). Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
+The CTest command requires an existing configured/built graphics tree. The dispatch/context follow-up baseline is 19 Python tests and 21 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The preceding controller checkpoint had 20 CTest cases. The audio output test uses SDL's dummy backend. The separate SDL/WPAD smoke executable is now `private/build/graphics/controller/input_smoke.exe`; see [controller validation](docs/CONTROLLERS.md). Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
 
 For memory-path comparisons, set `KEY_DISABLE_INLINE_RAM=1` in the child process environment before launch to use the original checked handlers; omit it for normal operation. Both routes enforce memory policy. Preserve the build manifest and five-second `TIMING` lines, and compare the same scene/input with compilation stopped. `game_root_hz` counts game-root task traversals; display-copy FPS alone is not a measurement of character velocity.
 

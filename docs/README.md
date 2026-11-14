@@ -19,6 +19,7 @@ Maintained documentation is written in English. Dates use `YYYY-MM-DD`. Keep ide
 | [PLAN.md](PLAN.md) | Architecture, stages, and acceptance criteria |
 | [RESEARCH.md](RESEARCH.md) | Initial research, chosen approach, and explicitly dated adoption updates |
 | [CONTROLLERS.md](CONTROLLERS.md) | F1 settings, DualShock 4 motion, keyboard fallback, mappings, and validation scope |
+| [PROFILING.md](PROFILING.md) | Separate throughput/CPU capture protocol, interpretation limits, and underwater optimization experiments |
 
 ## Historical experiments
 

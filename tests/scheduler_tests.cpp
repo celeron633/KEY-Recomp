@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "key/scheduler.h"
 #include "key/memory.h"
+#include "key/dispatch_context.h"
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -21,7 +22,7 @@ void pump(CpuContext& c) {
     enqueue(main_thread,31);
 }
 void dispatch(uint32_t address,CpuContext* c) {
-    CpuContextScope scope(c);
+    key::DispatchContextScope scope(c);
     if(address==0x80009000)return; // Synthetic switch callback.
     if(address==0x80009200)throw std::runtime_error("synthetic worker failure");
     if(address==0x8066B720) {
@@ -32,10 +33,12 @@ void dispatch(uint32_t address,CpuContext* c) {
     require(address==0x80009100 && c->gpr[3]==123 && c->gpr[1]==0x80012000);
     volatile uint32_t local=0x12345678;
     c->gpr[20]=0xAABBCCDD;c->fpr[14].raw=0x4004000000000000ull;c->gqr[3]=0x1234;
+    c->fpscr=4;MkwApplyHostNiMode(c->fpscr);
     progress=1;wr(worker+0x2D0,24);
     key::scheduler::select(*c,false);
     require(local==0x12345678 && c->gpr[20]==0xAABBCCDD && c->fpr[14].raw==0x4004000000000000ull && c->gqr[3]==0x1234);
-    require(TryGetCpuContext()==c);progress=2;
+    require(TryGetCpuContext()==c && g_mkwHostNiActive && g_mkwNiFlushThreshold==kMkwNiFlushThreshold);
+    require((MkwGetHostFpControl()&kMkwFpControlFlushToZeroBits)==kMkwFpControlFlushToZeroBits);progress=2;
 }
 }
 int main() {
@@ -47,9 +50,11 @@ int main() {
         wr(worker+0x198,0x80009100);wr(worker+4,0x80012000);wr(worker+12,123);wr(worker+0x19C,0xA032);
         enqueue(worker,8);
         CpuContext root{};root.gpr[1]=0x80010000;root.gpr[20]=0x5678;root.msr=0x2032;
-        CpuContextScope scope(&root);
+        key::DispatchContextScope scope(&root);
         key::scheduler::select(root,false);
         require(progress==1 && root.gpr[20]==0x5678 && TryGetCpuContext()==&root);
+        require(!g_mkwHostNiActive && g_mkwNiFlushThreshold==0.0);
+        require((MkwGetHostFpControl()&kMkwFpControlFlushToZeroBits)==0);
         wr(main_thread+0x2D0,31);
         key::scheduler::select(root,false);
         require(progress==2 && key::memory().read(worker+0x2C8,2)==8);

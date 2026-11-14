@@ -6,6 +6,8 @@
 #include "key/scheduler.h"
 #include "key/interrupt_progress.h"
 #include "key/dispatch_index.h"
+#include "key/dispatch_context.h"
+#include "key/dispatch_depth.h"
 #include "key/timing_metrics.h"
 #include "key/poll_clock.h"
 #ifdef KEY_WITH_AX
@@ -73,7 +75,7 @@ static void verify_data_init() {
 }
 
 namespace key {
-static std::map<CpuContext*,std::vector<uint32_t>> stacks;
+static DispatchDepths<CpuContext> call_depths;
 static uint64_t calls = 0;
 static uint64_t call_limit = 50000000;
 static std::string private_root;
@@ -185,7 +187,7 @@ static void idle_pump(CpuContext& ctx) {
     if((ctx.msr&0x8000) && decrementer().pending(clock.get().guest))deliver_interrupt(ctx.lr,&ctx,true);
 }
 void dispatch(uint32_t address, CpuContext* ctx) {
-    auto& stack=stacks[ctx];
+    auto& depth=call_depths.get(ctx);
     service_ios(ctx);
     PollClock clock;
     service_input(ctx,clock);
@@ -205,7 +207,7 @@ void dispatch(uint32_t address, CpuContext* ctx) {
         const auto root=memory().read(0x808E5D84,4);
         if(root && ctx->gpr[3]==root)++timing_counters.game_root_polls;
     }
-    if(stack.size()>=256)throw std::runtime_error("Guest call depth exceeded 256");
+    if(depth>=256)throw std::runtime_error("Guest call depth exceeded 256");
     if(calls<=5000) std::fprintf(stderr, "CALL %08X lr=%08X sp=%08X\n", address, ctx->lr, ctx->gpr[1]);
     else if(calls%100000==0) std::fprintf(stderr,"PROGRESS guest calls=%llu target=%08X\n",static_cast<unsigned long long>(calls),address);
     if(address==0x806649C0) { key::report(*ctx); return; }
@@ -256,10 +258,10 @@ void dispatch(uint32_t address, CpuContext* ctx) {
     if(found) {
         const auto& registration=*found;
         const auto created_thread=address==0x8066B4B0?ctx->gpr[3]:0;
-        stack.push_back(address);
+        ++depth;
         if(address==0x80647640) std::fprintf(stderr,"CHECK entering original game main\n");
         ctx->pc = address;
-        CpuContextScope context(ctx);
+        DispatchContextScope context(ctx);
         const auto system_time_begin = address == 0x8066C2C0 ? key::timebase() + 0xFFFFFFFF00000000ull : 0;
         struct TemplateScope {
             bool active, old = false;
@@ -268,9 +270,9 @@ void dispatch(uint32_t address, CpuContext* ctx) {
             ~TemplateScope() { finish(); }
         } template_scope(address == 0x80662540);
         try { registration.entry(ctx); }
-        catch(const InterruptReturn&) { stack.pop_back(); throw; }
-        catch (...) { std::fprintf(stderr, "UNWIND %08X %s\n", address, registration.name); stack.pop_back(); throw; }
-        stack.pop_back();
+        catch(const InterruptReturn&) { --depth; throw; }
+        catch (...) { std::fprintf(stderr, "UNWIND %08X %s\n", address, registration.name); --depth; throw; }
+        --depth;
         if(created_thread && ctx->gpr[3])scheduler::created(created_thread);
         if (address == 0x800042A0) verify_data_init();
         if (address == 0x8066C2C0) {
