@@ -102,6 +102,7 @@
         "Source_Core_DiscIO_WbfsBlob.cpp": "4891bc43184df9f89aef492fc5c09ad4aa657e7e060c705d5c456d5297ffd2d0",
         "Source_Core_DiscIO_WbfsBlob.h": "421c86c78ea736817a28a10c2961b40d5224824b0ab6c4b3c7d803eb9a94e20c",
         "Source_Core_VideoCommon_BPMemory.h": "1ee6ef94bd1f6570cfa72a7d2f9c80b4d15dced595aa997f031860463803b501",
+        "Source_Core_VideoCommon_BPStructs.cpp": "6032c6c6c31221b333593b7aa13f07fa45a9a2f49b4ff1555d9262ab1c13db6f",
         "Source_Core_VideoCommon_CommandProcessor.cpp": "30b4b4ca990848437674712965305ec63601c8da203fa5c88cc47214098b19b8",
         "Source_Core_VideoCommon_CommandProcessor.h": "8270f26721240bed0e38362ea7f1b947ac8aaa9546f1227d23050c172c16de53",
         "Source_Core_VideoCommon_PixelEngine.cpp": "ecc3be5c390818653e26ca7a201e086923262f148e6e1524125fc88c718a8600",

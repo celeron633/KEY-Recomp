@@ -54,7 +54,7 @@ python -m unittest discover -s tests -v
 ctest --test-dir private/build/graphics --output-on-failure
 ```
 
-The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 12 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
+The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 13 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
 
 Document what was actually tested, the exact commands/configuration, the expected result, and any failure or untested path. A generated function, a successful link, an open window, and playable gameplay are different milestones. Unknown instructions/services must fail with useful diagnostics; do not bypass game logic or return fake success to advance a test.
 

@@ -2,7 +2,9 @@
 
 The native Windows x64 EXE has directly displayed the original Kirby's Epic Yarn title/menu (ONE PLAYER / TWO PLAYERS). Direction input, confirmation, single-player file selection, initial save creation, and save reload have been exercised through desktop automation. The original goal of reaching the main interface has been met.
 
-**Latest owner feedback:** the game now runs normally, including gameplay. The earlier first-level crash report remains recorded as **P4-001** in [ISSUES.md](ISSUES.md); its cause was not established and no specific fix is claimed for it. The latest report is a user observation, not an independently repeated full-game test. The complete first-level acceptance loop and full-game compatibility remain unverified.
+**Gameplay checkpoint:** the owner reports that gameplay runs. The earlier first-level crash report remains recorded as **P4-001** in [ISSUES.md](ISSUES.md). A follow-up fixed a confirmed MEM2 palette-address truncation defect consistent with a retained scene-drawing crash log; the original input sequence and causal relationship to the owner's report remain unverified. The complete first-level acceptance loop and full-game compatibility remain unverified.
+
+The owner subsequently confirmed the installed palette fix: "fixed, tested myself". The full first-level acceptance loop remains open.
 
 ## Local launch
 
@@ -33,6 +35,7 @@ The native DOL build profile contains approximately 32,674 functions. Native ser
 - **Graphics:** convert guest CP/XF/BP, FIFO, display lists, and texture/TLUT pointers for Aurora/D3D12. FIFO writes made with the GP link disconnected are stored in guest RAM for display-list recording.
 - **Black-frame fix:** the game first CopyDisp's the previous frame, then draws the next one. Ending the host frame at VIWaitForRetrace cleared post-copy drawing. Presentation now occurs when the actual display copy completes.
 - **Vertex-array ranges:** GX provides no array length. Derive the required byte range from draw/XF indices, with bounds checks and bounded growth, instead of uploading all remaining RAM. This avoids the observed roughly 45 MiB upload into an 8 MiB staging buffer.
+- **Wii palette addresses:** TLUT uploads now retain all 24 BP source bits before converting 32-byte units to physical addresses. The old 21-bit mask could alias MEM2 palettes to MEM1 or fail on an unmapped address. Synthetic CI4/CI8/CI14X2 transfers verify address/content correctness, snapshots, masking, and bounds; the retained crash is consistent with this defect but its exact gameplay sequence has not been repeated.
 - **EFB/XFB CPU access:** pending GPU readback regions have hazard checks. CPU reads and partial overwrites fail explicitly; synchronous readback remains unimplemented. GPU texture reuse does not require fabricated RAM contents.
 - **Input:** SDL host devices -> native WPAD -> original KPAD. Standard Wii Remote profiles, callbacks, and big-endian reports are supported. Short keyboard events are held through sampling; directions use the sideways mapping. Input activity calls original __VIResetRFIdle. Idle dimming is a native presentation overlay, not a system display-setting change; the dimming curve still needs hardware comparison.
 - **Audio:** validate the local AX program CRC=4CC52064. Import generic synchronous mixing algorithms from the pinned WiiCompiled revision, excluding other games' addresses and guessed layouts. DSP mailbox, original AX callbacks, and AI DMA feed native SDL PCM output. Coefficients are copied only from the user's local Dolphin directory to private/boot; Dolphin is not required at runtime.
@@ -52,7 +55,7 @@ ctest --test-dir private/build/graphics --output-on-failure
 
 The default build_probe path builds and validates; it no longer expects an early P2 stop address. `--explore` starts a diagnostic run with call/time budgets. Standalone GUI startup is not subject to the diagnostic call-count limit. These commands are not yet a verified clean-machine installation workflow; see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Latest runtime checks: **19 Python tests and 12 CTest cases passed**, including guest-clock suspension and PCM backpressure. Earlier D3D12 synthetic pixel readback, WPAD synthetic report/callback/short-key tests, and real poisoned-BSS checks passed. These are separate from observed native menu behavior. Before the initial commit, the 19 Python tests and 12 CTest cases were rerun successfully. Gameplay was not independently rerun in that pass.
+Latest runtime checks: **19 Python tests and 13 CTest cases passed**, including the new palette-transfer regression, guest-clock suspension, and PCM backpressure. The palette test failed against the old bridge before the fix. The first post-fix test run exposed a fixture error (reusing a terminally failed FIFO); rejection cases now use independent bridges and the full suite passes. Earlier D3D12 synthetic pixel readback, WPAD synthetic report/callback/short-key tests, and real poisoned-BSS checks passed. These are separate from observed native game behavior. The historical pre-commit baseline was 19 Python tests and 12 CTest cases.
 
 Evidence locations:
 
@@ -61,6 +64,8 @@ Evidence locations:
 - Window-stall/backpressure run: `private/reports/pcm-backpressure-live.log`.
 - Pre-fix log and build manifest: `private/reports/crash-20261114-pcm-backlog/`.
 - Installed build manifest: `private/game/local-build.json`.
+
+Palette evidence: `private/reports/gameplay-unmapped-20261114/` preserves the old log/build identity, NAND backup, title screenshot, and installed build identity. `private/reports/tlut-regression-before.log` records the failing regression; `private/reports/tlut-build-validation-final.log` and `private/reports/tlut-python.log` record passing checks. The corrected EXE was installed and reached the title screen; automated input checks stopped on concurrent owner input, and the owner subsequently verified the fix. Exact first-level crash reproduction and full completion remain unverified.
 
 The window system-menu experiment induced actual PCM backpressure and recovered to responsive menu input. A long modal pause can still create an audio catch-up delay; this was not treated as a passed long-run synchronization test.
 

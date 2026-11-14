@@ -10,6 +10,18 @@ Updated: 2026-11-14. Keep code generation, function returns, and correct game be
 
 This is evidence of reported level entry, not completion of P4's gameplay loop. Do not assume it shares the PCM cause from P3-005. If the crash recurs, preserve `private/reports/native-app.log` and `private/game/local-build.json` before another launch, establish the starting save and input sequence, and correlate a repeatable failure with its runtime service/diagnostic. Keep raw game logs, screenshots, saves, and binaries private. No crash fix or independent reproduction is claimed here.
 
+### Follow-up: Wii MEM2 palette uploads (2026-11-14)
+
+The next implementation pass found a retained native log ending with `STOP: Unmapped/MMIO access at guest address 0x02F662E0` while unwinding scene drawing. The original log and installed build identity were copied to `private/reports/gameplay-unmapped-20261114/` before relaunching. Its exact input sequence and relationship to the owner's earlier report are unknown.
+
+The GX bridge decoded the TLUT source with a 21-bit mask before shifting by five. This discards the Wii MEM2 address selector: for example, `0x12F662E0` becomes the observed unmapped address. Lower MEM2 offsets could instead silently read unrelated MEM1 palette data. The bridge now preserves all 24 BP payload bits, matching the Wii path in pinned Dolphin [BPStructs.cpp](https://github.com/dolphin-emu/dolphin/blob/e36cd326c0af3179bf75a8deb5e2ecf92ab78b72/Source/Core/VideoCommon/BPStructs.cpp#L385-L402). The reference remains local, with its digest added to `references.lock.json`; no third-party implementation was imported.
+
+A new independent synthetic test feeds CI4/CI8/CI14X2 palette uploads from MEM1 and multiple MEM2 locations, checks the resolver address/extent and emitted palette content, verifies immutable snapshots and masked BP writes, and rejects out-of-range reads and TMEM writes. The old bridge fails with `TLUT upload lost Wii physical address bits or transfer extent` (`private/reports/tlut-regression-before.log`). This establishes an address-decoding defect and a plausible explanation for the retained crash, not a reproduced first-level completion or proof that every reported crash had this cause.
+
+After correcting a fixture that reused a terminally failed FIFO, all 13 CTest cases and 19 Python tests passed. The final `python tools/build_probe.py --graphics` run passed, including incorrect-DOL rejection (`private/reports/tlut-build-validation-final.log`). The corrected EXE was installed and reached the original title screen. Automated input checks stopped when the desktop tool detected concurrent user input; the game was left running. Gameplay completion and exact crash reproduction remain pending.
+
+**Owner verification:** after testing the installed build, the owner confirmed "fixed, tested myself". The palette defect is fixed with synthetic regression coverage and owner confirmation. Preserve the original diagnostic and its causal uncertainty; this report does not specify full-level completion, save/reload, or full-game compatibility.
+
 ## P3-001: Black game frames — native frame boundary corrected
 
 The wrist-strap and sideways-controller notices displayed, but save confirmation could turn black. Per-draw GPU pixel readback showed colors after drawing and black after the display copy. Command order established that the game first CopyDisp's the previous frame, then draws the next. Ending the host frame at VIWaitForRetrace cleared the later drawing. Native presentation now occurs when the display-copy command completes. Original drawing and the game state machine are preserved; confirmation and title screens display correctly.
@@ -40,7 +52,7 @@ The updated standalone EXE launched to the title with a minimal PATH. Clicking t
 
 ## Current validation boundary
 
-12 CTest cases and 19 Python tests passed after the PCM fix. Earlier graphics readback/input smoke, real poisoned-BSS, native title/menu/save creation, and standalone launch checks passed. Normal gameplay is now user-reported; the earlier first-level crash is retained as undiagnosed history. The 12 CTest cases and 19 Python tests also passed again before the initial commit. Full gameplay, complete hardware/floating-point semantics, synchronous EFB readback, and fixed-input Dolphin comparisons remain unverified; full-game playability is not claimed.
+13 CTest cases and 19 Python tests passed after the MEM2 palette correction. The historical PCM/pre-commit baseline was 12 CTest cases and 19 Python tests. Earlier graphics readback/input smoke, real poisoned-BSS, native title/menu/save creation, and standalone launch checks passed. The owner confirmed the installed palette fix; the retained crash diagnostic is consistent with the corrected address defect, but its original input sequence has not been reproduced. Full gameplay, complete hardware/floating-point semantics, synchronous EFB readback, and fixed-input Dolphin comparisons remain unverified; full-game playability is not claimed.
 
 ## P2-010: Native scheduling and GX/WPAD integration (2026-11-14)
 

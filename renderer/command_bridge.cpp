@@ -156,7 +156,8 @@ void CommandBridge::bp_write(uint32_t value) {
     bp_[reg]=merged; bp_mask_=0xFFFFFF;
     if(reg==0x65) {
         const uint32_t target=(merged&0x3FF)*512, size=((merged>>10)&0x7FF)*32;
-        const uint32_t source=(bp_[0x64]&0x1FFFFF)<<5;
+        // Wii retains all 24 source bits (32-byte units), including MEM2.
+        const uint32_t source=(bp_[0x64]&0xFFFFFF)<<5;
         if(!size || target>palette_memory_.size() || size>palette_memory_.size()-target) throw std::runtime_error("Invalid TLUT upload extent");
         const auto view=resolve_(source,size);
         std::copy_n(view.begin(),size,palette_memory_.begin()+target);

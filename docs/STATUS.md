@@ -2,19 +2,22 @@
 
 See [CURRENT-RUN.md](CURRENT-RUN.md) for the detailed handoff. The local `private/game/KEY-Recomp.exe` launches without arguments into the original title/menu. Initial save creation, save reload, direction input, and confirmation have been directly verified. No Dolphin process is used at runtime.
 
-**Latest owner report:** the game now runs normally, including gameplay. This supersedes the earlier description of a currently crashing first-level run. The earlier report is retained as **P4-001** in [ISSUES.md](ISSUES.md), with its cause undiagnosed and no specific crash fix claimed. Full-game completion, gameplay save/reload, and compatibility still need structured validation.
+**Gameplay checkpoint:** the owner reports that gameplay runs. The earlier first-level crash report is retained as **P4-001** in [ISSUES.md](ISSUES.md). A follow-up found a retained scene-drawing failure and fixed a confirmed Wii MEM2 palette-address truncation defect consistent with that diagnostic. The original crash sequence has not been reproduced, so the relationship remains an inference. Full-game completion, gameplay save/reload, and compatibility still need structured validation.
+
+After installation, the owner confirmed: "fixed, tested myself". This is owner verification of the fix; the exact tested sequence and full first-level acceptance loop have not been independently recorded.
 
 ## Current milestone
 
 - P2: native main-loop milestone reached. Full exception, floating-point, and device correctness remain under validation.
 - P3: title/menu interaction and save creation/reload verified. Fixed-input comparison against Dolphin is still pending.
-- P4: normal gameplay reported by the owner; the earlier first-level crash remains an undiagnosed historical report. Completion, save/reload after gameplay, and return-to-title acceptance are not established.
+- P4: normal gameplay reported by the owner; MEM2 palette upload decoding is now corrected and covered synthetically. Completion, save/reload after gameplay, and return-to-title acceptance are not established.
 - P5/P6: high-resolution coverage, long-run stability, clean-machine setup, and public packaging remain incomplete. This is not a fully playable release.
 - The exit after a window click was traced to a PCM backlog guard. Output backpressure and guest-clock suspension were implemented and installed locally; see P3-005. Long Windows system-menu pauses can still cause audio catch-up delays.
+- The MEM2 palette correction was rebuilt and installed locally; no-argument startup reached the title screen. Automated input checks stopped on detected concurrent user input, leaving the game running. This pass does not establish first-level completion.
 
 ## Validation baseline
 
-The latest runtime verification passed **12 CTest cases and 19 Python tests**, including the new clock suspension and PCM backpressure checks. Earlier independent graphics readback/input smoke tests and real-DOL poisoned-BSS checks also passed. These results and manual title/menu observations are distinct evidence; none establishes full-game correctness. The 19 Python tests and 12 CTest cases were rerun successfully before the initial commit. Gameplay was not independently rerun in that pass.
+The latest runtime verification passed **13 CTest cases and 19 Python tests**, including Wii MEM1/MEM2 palette transfers, clock suspension, and PCM backpressure. The palette regression failed against the old bridge before the fix. Earlier independent graphics readback/input smoke tests and real-DOL poisoned-BSS checks also passed. These results and manual observations are distinct evidence; none establishes full-game correctness. The historical pre-commit baseline was 12 CTest cases and 19 Python tests.
 
 The native DOL build profile contains approximately 32,674 functions, excluding native services and 14 functions with unsafe `rfi` lowering. Historical translation experiments generated a different set of 32,737 functions; code generation counts are not execution or semantic coverage.
 

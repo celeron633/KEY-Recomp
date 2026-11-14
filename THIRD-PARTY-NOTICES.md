@@ -10,6 +10,6 @@ Aurora (MIT), from https://github.com/patchzyy/aurora-wiicompiled at the pinned 
 
 Swiftshine/key (CC0-1.0) provides symbol metadata for local profile generation; see references.lock.json. Its sources remain in the excluded reference checkout.
 
-Selected Dolphin Emulator sources (GPL-2.0-or-later, Dolphin Emulator Project contributors) are used as behavioral references for boot state and timing. Their pinned commit and local file digests are in references.lock.json under source_snapshots. They remain in the excluded references/dolphin-source directory; per-file notices and COPYING are retained there. No Nintendo boot program is copied or distributed.
+Selected Dolphin Emulator sources (GPL-2.0-or-later, Dolphin Emulator Project contributors) are used as behavioral references for boot state, timing, and graphics register semantics. Their pinned commit and local file digests are in references.lock.json under source_snapshots. They remain in the excluded references/dolphin-source directory; per-file notices and COPYING are retained there. No Nintendo boot program is copied or distributed.
 
 The pinned .NET SDK, LLVM-MinGW and Ninja are local development tools, not redistributed in a release. Any future redistribution must include their applicable notices and corresponding source obligations separately.

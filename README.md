@@ -27,6 +27,8 @@ By default, the build runs synthetic checks and verifies rejection of an incorre
 
 The PCM backlog exit reported after a window click has been addressed with output backpressure. A long pause in the Windows system menu can still cause an audio catch-up delay. See [known issues](docs/ISSUES.md) for evidence and remaining limitations.
 
+The latest local build also corrects MEM2 palette-address truncation, which could cause invalid colors or an unmapped-memory stop during drawing. Synthetic regression checks pass; the earlier first-level crash sequence and complete gameplay loop still need validation.
+
 ## Prepare local input
 
 The extraction tool requires Python 3.10+ and a DolphinTool build with the `header` and `extract` commands. Run these commands from the project root, adapting the local paths as needed:
