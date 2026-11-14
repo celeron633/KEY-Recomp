@@ -13,6 +13,9 @@ On the prepared development workspace, double-click `private/game/KEY-Recomp.exe
 - Arrow keys / WASD: direction input, mapped for a sideways Wii Remote.
 - X: Wii 2, confirm. Z: Wii 1, back.
 - Enter: A. C: B. Space: Plus.
+- Q / E: sideways Wii Remote tilt. R: recenter the motion pointer.
+- F1: controller/settings menu. F2: toggle FPS. Pause with Plus / Options before opening settings when needed; the settings menu blocks input but does not pause game time.
+- DualShock 4: D-pad/left stick moves, Cross = Wii 2, Square = Wii 1, Circle = A, Triangle = B, Options = Plus, Share = Minus, PS = Home, R3 = pointer recenter. F1 allows button remapping, device selection, gyro calibration, tilt/pointer sensitivity and axis inversion. See [controller setup](docs/CONTROLLERS.md).
 - Save data: `private/user/nand`. Replaced/deleted nodes are retained in `private/user/nand-deleted`.
 - Application log: `private/reports/native-app.log`. Keep local evidence before a subsequent launch overwrites it.
 

@@ -10,6 +10,8 @@ After installation, the owner confirmed: "fixed, tested myself". This is owner v
 
 ## Current milestone
 
+- Controller/settings follow-up: F1 settings, F2 FPS, player-1 DS4 mapping, gyro IR pointer, accelerometer tilt, calibration, and keyboard Q/E tilt are implemented in `controller/`. Both sensors were directly detected on the local PS4 controller, and the overlay was observed. Both default gyro signs were corrected after the owner's direction report; the owner subsequently reported normal basic functionality with no further apparent bugs. The exact physical test sequence and full-game motion coverage remain unrecorded. See [controller setup](CONTROLLERS.md).
+
 - P2: native main-loop milestone reached. Full exception, floating-point, and device correctness remain under validation.
 - P3: title/menu interaction and save creation/reload verified. Fixed-input comparison against Dolphin is still pending.
 - P4: normal gameplay reported by the owner; MEM2 palette upload decoding is now corrected and covered synthetically. Completion, save/reload after gameplay, and return-to-title acceptance are not established.
@@ -19,7 +21,7 @@ After installation, the owner confirmed: "fixed, tested myself". This is owner v
 
 ## Validation baseline
 
-The latest runtime verification passed **19 CTest cases and 19 Python tests**, including coalesced write generations and concurrent readers/publishers, all memory-writer routes, dispatch-clock reuse/refresh, VI/GPU event polling, inline/reference memory-policy checks, native dispatch, Wii palettes, clock suspension, and PCM backpressure. Incorrect-DOL rejection, hardware D3D12 pixel readback, and WPAD input checks also passed. Real-DOL poisoned-BSS checks remain separate earlier evidence. These results and manual observations do not establish full-game correctness. The preceding event-polling checkpoint had 18 CTest cases and inline RAM had 16; the historical pre-commit baseline was 12 CTest cases and 19 Python tests.
+The controller follow-up passed **20 CTest cases and 19 Python tests**, adding synthetic gyro/tilt contracts to the preceding coalesced-write checkpoint's 19 CTest cases. Incorrect-DOL rejection, hardware D3D12 pixel readback, and extended SDL/WPAD input smoke checks also passed. The input smoke checks cover synthetic sensor delivery, button isolation, menu/focus/disconnect behavior, keyboard tilt, settings replacement/reload, and malformed-file rejection. Real-DOL poisoned-BSS checks remain separate earlier evidence. These checks do not establish physical motion direction, latency, or full-game correctness. The earlier event-polling checkpoint had 18 CTest cases and inline RAM had 16; the historical pre-commit baseline was 12 CTest cases and 19 Python tests.
 
 The native DOL build profile contains approximately 32,674 functions, excluding native services and 14 functions with unsafe `rfi` lowering. Historical translation experiments generated a different set of 32,737 functions; code generation counts are not execution or semantic coverage.
 

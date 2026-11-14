@@ -18,6 +18,7 @@ Maintained documentation is written in English. Dates use `YYYY-MM-DD`. Keep ide
 | [ISSUES.md](ISSUES.md) | Open issues and fixes, with evidence and stable issue IDs; early P2 entries are historical |
 | [PLAN.md](PLAN.md) | Architecture, stages, and acceptance criteria |
 | [RESEARCH.md](RESEARCH.md) | Initial research, chosen approach, and explicitly dated adoption updates |
+| [CONTROLLERS.md](CONTROLLERS.md) | F1 settings, DualShock 4 motion, keyboard fallback, mappings, and validation scope |
 
 ## Historical experiments
 

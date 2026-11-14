@@ -6,6 +6,7 @@
 #include "key/clock.h"
 #include "key/timing_metrics.h"
 #include "audio_output.h"
+#include "controller/controls.h"
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 #include <aurora/gfx.h>
@@ -98,6 +99,7 @@ void initialize(const std::string& private_root,bool hidden) {
     const auto info=aurora_initialize(1,argv,&config);
     if(info.initializationStatus!=AURORA_INITIALIZATION_SUCCESS) throw std::runtime_error(info.initializationError?info.initializationError:"Native graphics initialization failed");
     s.initialized=true;
+    controls::initialize(private_root);
     const auto& adapter=aurora::webgpu::g_adapterInfo;
     const auto device=adapter.device.IsUndefined()?std::string_view{"Unknown"}:std::string_view{adapter.device};
     const auto driver=adapter.description.IsUndefined()?std::string_view{"Unknown"}:std::string_view{adapter.description};
@@ -172,6 +174,7 @@ void present() {
         std::fprintf(stderr,"PIXELS frame=%llu visible probes=%u/%u viewport=%.1f,%.1f,%.1f,%.1f scissor=%d,%d,%d,%d color=%d tev=%u\n",static_cast<unsigned long long>(s.frame_count),lit,found,gx.logicalViewport.left,gx.logicalViewport.top,gx.logicalViewport.width,gx.logicalViewport.height,gx.logicalScissor.x,gx.logicalScissor.y,gx.logicalScissor.width,gx.logicalScissor.height,gx.colorUpdate,gx.numTevStages);
     }
     if(s.dimmed){if(!ImGui::GetCurrentContext())throw std::runtime_error("No native presentation overlay for video dimming");ImGui::GetForegroundDrawList()->AddRectFilled(ImVec2(0,0),ImGui::GetIO().DisplaySize,IM_COL32(0,0,0,128));}
+    controls::draw_overlay(s.frame_count);
     aurora_end_frame(); s.frame_active=false;
     ++s.frame_count;
     if(s.frame_count<=5 || s.frame_count%60==0) std::fprintf(stderr,"GRAPHICS presented frame=%llu guest draws=%llu\n",static_cast<unsigned long long>(s.frame_count),static_cast<unsigned long long>(draws()));
@@ -183,6 +186,7 @@ void present() {
     report_timing();
 }
 void poll_events() {
+    controls::update();
     for(auto* event=aurora_update();event && event->type!=AURORA_NONE;++event){
         if(event->type==AURORA_EXIT) throw std::runtime_error("Native window closed by user");
         if(event->type==AURORA_SDL_EVENT){
@@ -207,6 +211,7 @@ void shutdown() {
     if(!s.initialized) return;
     memory().set_fifo_sink(nullptr); memory().set_fifo_sync(nullptr,nullptr);
     memory().set_audio_sink(nullptr);stop_audio();
+    controls::shutdown();
     input::shutdown();
     sync();
     if(s.frame_active) { aurora_end_frame(); s.frame_active=false; }

@@ -2,6 +2,7 @@
 #include "key/input.h"
 #include "key/memory.h"
 #include "backend.h"
+#include "controls.h"
 #include <revolution/wpad.h>
 #include <aurora/wpad.h>
 #include <dolphin/pad.h>
@@ -31,7 +32,6 @@ bool test_pulse_active=false,test_pulse_done=false;
 struct Key {uint32_t scancode;uint16_t mask;bool down=false;std::chrono::steady_clock::time_point until{};};
 std::array<Key,17> keys{{{SDL_SCANCODE_LEFT,PAD_BUTTON_UP},{SDL_SCANCODE_RIGHT,PAD_BUTTON_DOWN},{SDL_SCANCODE_UP,PAD_BUTTON_RIGHT},{SDL_SCANCODE_DOWN,PAD_BUTTON_LEFT},{SDL_SCANCODE_Z,PAD_BUTTON_X},{SDL_SCANCODE_X,PAD_BUTTON_Y},{SDL_SCANCODE_RETURN,PAD_BUTTON_A},{SDL_SCANCODE_C,PAD_BUTTON_B},{SDL_SCANCODE_SPACE,PAD_BUTTON_START},{SDL_SCANCODE_A,PAD_BUTTON_UP},{SDL_SCANCODE_D,PAD_BUTTON_DOWN},{SDL_SCANCODE_W,PAD_BUTTON_RIGHT},{SDL_SCANCODE_S,PAD_BUTTON_LEFT},{SDL_SCANCODE_KP_4,PAD_BUTTON_UP},{SDL_SCANCODE_KP_6,PAD_BUTTON_DOWN},{SDL_SCANCODE_KP_8,PAD_BUTTON_RIGHT},{SDL_SCANCODE_KP_2,PAD_BUTTON_LEFT}}};
 std::mutex key_mutex;
-bool virtual_keyboard=false;
 bool SDLCALL keyboard_watch(void*,SDL_Event* event){
     if(event->type==SDL_EVENT_KEY_DOWN && std::getenv("KEY_TRACE_INPUT"))std::fprintf(stderr,"INPUT SDL scancode=%u\n",unsigned(event->key.scancode));
     if(event->type==SDL_EVENT_KEY_DOWN || event->type==SDL_EVENT_KEY_UP)key_event(event->key.scancode,event->type==SDL_EVENT_KEY_DOWN);
@@ -81,6 +81,7 @@ void complete(int32_t c,int32_t result) {
 }
 void key_event(uint32_t scancode,bool down){
     std::lock_guard lock(key_mutex);
+    if(controls::captured())return;
     const auto now=std::chrono::steady_clock::now();
     for(auto& key:keys)if(key.scancode==scancode){
         if(down && !key.down)key.until=now+std::chrono::milliseconds(40);
@@ -88,7 +89,7 @@ void key_event(uint32_t scancode,bool down){
         if(std::getenv("KEY_TRACE_INPUT"))std::fprintf(stderr,"INPUT keyboard scancode=%u down=%d\n",scancode,down);
     }
 }
-void release_keyboard(){std::lock_guard lock(key_mutex);for(auto& key:keys){key.down=false;key.until={};}if(virtual_keyboard){PADClearVirtualStatus(0);virtual_keyboard=false;}}
+void release_keyboard(){std::lock_guard lock(key_mutex);for(auto& key:keys){key.down=false;key.until={};}controls::set_keyboard(0);}
 void shutdown(){if(initialized){SDL_RemoveEventWatch(&keyboard_watch,nullptr);release_keyboard();aurora_wpad_shutdown();initialized=false;channels={};completions.clear();}}
 void poll() {
     poll(std::chrono::steady_clock::now());
@@ -103,8 +104,7 @@ bool poll(std::chrono::steady_clock::time_point now) {
     }
     uint16_t mask=test_pulse_active?PAD_BUTTON_Y:0;
     {std::lock_guard lock(key_mutex);for(const auto& key:keys)if(key.down || now<key.until)mask|=key.mask;}
-    if(mask){PADStatus pad{};pad.err=PAD_ERR_NONE;pad.button=mask;PADSetVirtualStatus(0,&pad);virtual_keyboard=true;}
-    else if(virtual_keyboard){PADClearVirtualStatus(0);virtual_keyboard=false;}
+    controls::set_keyboard(mask);
     last_poll=now;graphics::poll_events();
     return true;
 }
