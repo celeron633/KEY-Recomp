@@ -14,8 +14,7 @@ struct FastMemoryView {
     const bool* mem2_mapped=nullptr;
     const uint8_t* executable_pages=nullptr;
     const std::atomic<uint64_t>* gpu_regions=nullptr;
-    std::atomic<uint64_t>* revision=nullptr;
-    std::atomic<uint64_t>* page_versions=nullptr;
+    std::atomic<uint8_t>* dirty_pages=nullptr;
 };
 extern FastMemoryView fast_memory_view;
 namespace fast_memory {
@@ -72,10 +71,9 @@ template<class T> [[gnu::always_inline]] inline void write(uint32_t address,T va
     }
     const auto stored=guest_order(value);
     std::memcpy(view.bytes+off,&stored,sizeof(T));
-    const auto revision=view.revision->fetch_add(1,std::memory_order_relaxed)+1;
-    view.page_versions[off/4096].store(revision,std::memory_order_release);
+    view.dirty_pages[off/4096].store(1,std::memory_order_release);
     if(off/4096!=(off+sizeof(T)-1)/4096)
-        view.page_versions[(off+sizeof(T)-1)/4096].store(revision,std::memory_order_release);
+        view.dirty_pages[(off+sizeof(T)-1)/4096].store(1,std::memory_order_release);
 }
 }
 }

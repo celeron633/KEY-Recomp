@@ -29,7 +29,7 @@ The PCM backlog exit reported after a window click has been addressed with outpu
 
 The latest local build also corrects MEM2 palette-address truncation, which could cause invalid colors or an unmapped-memory stop during drawing. Synthetic regression checks pass; the earlier first-level crash sequence and complete gameplay loop still need validation.
 
-Rendering uses hardware Direct3D 12; the RTX 3060 was verified on the development PC. Inline checked RAM access and event-polling optimizations are installed. A stationary bridge comparison improved from 44.79 to 50.98 frames/s; the collectible states differed between runs. Scenes can still fall below 60 Hz, and full-speed compatibility is not yet established.
+Rendering uses hardware Direct3D 12; the RTX 3060 was verified on the development PC. Inline checked RAM, event-polling optimizations, and coalesced memory-write tracking are installed. The latest stationary sample averaged 56.76 frames/s. Earlier measurements used different collectible/input states, so they are not identical-replay comparisons. Scenes can still fall below 60 Hz, and full-speed compatibility is not yet established.
 
 ## Prepare local input
 

@@ -64,6 +64,20 @@ int main(){
     const auto before1=m.generation(first,1),before2=m.generation(second,1);
     Memory::Write64(0x8000BFFC,0x1122334455667788ull);
     check(m.generation(first,1)>before1 && m.generation(second,1)>before2);
+    // Every writer route must invalidate an already queried overlapping range.
+    const auto* region=m.gpu_view(0xD000,0x2000).data();
+    auto version=m.generation(region,0x2000);
+    auto changed=[&]{const auto next=m.generation(region,0x2000);check(next>version);version=next;check(m.generation(region,0x2000)==version);};
+    m.fill(0xDFFC,8,0x55);changed();
+    const std::array<uint8_t,8> bytes{9,8,7,6,5,4,3,2};
+    m.load(0xE000,bytes.data(),bytes.size(),false);changed();
+    m.write_bytes(0xDFFC,bytes);changed();m.copy(0xD010,0xDFFC,8,false);changed();
+    // Consuming the later page's flag must not hide a write on the older page.
+    Memory::Write32(0xE004,42);m.generation(region+4096,1);changed();
+    Memory::Write32(0xD004,43);changed();
+    auto* gpu=static_cast<uint8_t*>(m.gpu_writable(0xDFFC,8));
+    m.mark_gpu_copy(0xDFFC,8);std::memcpy(gpu,bytes.data(),bytes.size());
+    m.notify_gpu_write(gpu,8);changed();check(Memory::Read32(0xDFFC)==0x09080706);
     // Existing MMIO semantics are exercised through the same fast ABI entry.
     Memory::Write32(0xCC003004,0x40);check(Memory::Read32(0xCC003004)==0x40);
     rejects([&]{Memory::Read32(0xCC003001);});

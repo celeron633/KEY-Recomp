@@ -6,6 +6,7 @@
 #include "key/video.h"
 #include "key/audio_interface.h"
 #include "key/gpu_pending.h"
+#include "key/write_tracking.h"
 #include <vector>
 #include <array>
 #include <atomic>
@@ -69,8 +70,7 @@ struct Memory::State {
     bool pe_token_pending_=false,pe_finish_pending_=false;
     std::atomic<uint32_t> gpu_token_event_{0};
     std::atomic<bool> gpu_finish_event_{false};
-    std::atomic<uint64_t> write_revision_{1};
-    std::array<std::atomic<uint64_t>,0x5800> page_versions_{};
+    WriteTracking writes_;
     PendingGpuCopies gpu_copies_;
     VideoInterface video_;
     std::array<std::vector<uint8_t>,256> ave_registers_;
@@ -82,7 +82,7 @@ FastMemoryView Memory::fast_view(){
     const auto* reference=std::getenv("KEY_DISABLE_INLINE_RAM");
     const bool disabled=reference && std::strcmp(reference,"1")==0;
     return {this,disabled?nullptr:state_->bytes_.data(),&state_->mem2_mapped_,state_->executable_pages_.data(),
-        state_->gpu_copies_.page_masks(),&state_->write_revision_,state_->page_versions_.data()};
+        state_->gpu_copies_.page_masks(),state_->writes_.dirty_pages()};
 }
 bool Memory::template_access(bool enabled) { bool old = state_->template_access_; state_->template_access_ = enabled; return old; }
 bool Memory::interrupt_pending() const { return state_->pi_.pending(); }
@@ -137,7 +137,7 @@ void Memory::configure_retail_mapping() {
     state_->mem2_mapped_=true;
     if(fast_memory_view.owner==this)fast_memory_view=fast_view();
 }
-void Memory::reset() { state_->gpu_copies_.clear(); std::fill(state_->bytes_.begin(), state_->bytes_.end(), 0); state_->executable_.clear(); state_->executable_pages_.fill(0); state_->low_known_.fill(false); state_->template_words_.clear(); state_->template_access_=false; state_->mem2_mapped_=false; state_->pi_.reset(); state_->ipc_mask_=0; state_->mi_mask_=0; state_->dsp_control_=4; state_->ai_.reset(); state_->exi_status_={0x800,0x880,0}; state_->exi_registers_={}; state_->si_poll_=0x01EC0000; state_->si_csr_=state_->si_status_=0; state_->si_buffer_.fill(0); state_->vi_clock_=1; state_->ipl_.reset(); state_->dsp_image_valid_=state_->dsp_mail_valid_=false; state_->dsp_mail_value_=state_->dsp_cpu_mail_=state_->dsp_boot_command_=state_->dsp_task_fields_=0; state_->dsp_rom_=true; state_->dsp_task_={}; state_->dsp_mail_queue_.clear(); state_->audio_dma_source_=state_->audio_dma_cursor_=state_->audio_dma_control_=state_->audio_dma_remaining_=0; state_->audio_dma_tick_=state_->audio_dma_start_irq_=0; state_->audio_sink_=nullptr; state_->boot_dma_count_=0; state_->ar_info_=0; state_->ar_dma_={}; state_->audio_pll_={}; state_->boot_aram_.fill(0); state_->video_.reset(); for(auto& reg:state_->ave_registers_) reg.clear(); state_->fifo_sink_=nullptr; state_->mi_protection_=state_->mi_unknown_=0; state_->ipc_control_=state_->ipc_message_=state_->ipc_irq_flags_=0; state_->fifo_sync_=nullptr; state_->fifo_empty_=nullptr; state_->cp_registers_={}; state_->pe_registers_={}; state_->pe_token_pending_=state_->pe_finish_pending_=false; state_->gpu_token_event_=0; state_->gpu_finish_event_=false; const auto epoch=state_->write_revision_.fetch_add(1)+1; for(auto& page:state_->page_versions_) page.store(epoch); }
+void Memory::reset() { state_->gpu_copies_.clear(); std::fill(state_->bytes_.begin(), state_->bytes_.end(), 0); state_->executable_.clear(); state_->executable_pages_.fill(0); state_->low_known_.fill(false); state_->template_words_.clear(); state_->template_access_=false; state_->mem2_mapped_=false; state_->pi_.reset(); state_->ipc_mask_=0; state_->mi_mask_=0; state_->dsp_control_=4; state_->ai_.reset(); state_->exi_status_={0x800,0x880,0}; state_->exi_registers_={}; state_->si_poll_=0x01EC0000; state_->si_csr_=state_->si_status_=0; state_->si_buffer_.fill(0); state_->vi_clock_=1; state_->ipl_.reset(); state_->dsp_image_valid_=state_->dsp_mail_valid_=false; state_->dsp_mail_value_=state_->dsp_cpu_mail_=state_->dsp_boot_command_=state_->dsp_task_fields_=0; state_->dsp_rom_=true; state_->dsp_task_={}; state_->dsp_mail_queue_.clear(); state_->audio_dma_source_=state_->audio_dma_cursor_=state_->audio_dma_control_=state_->audio_dma_remaining_=0; state_->audio_dma_tick_=state_->audio_dma_start_irq_=0; state_->audio_sink_=nullptr; state_->boot_dma_count_=0; state_->ar_info_=0; state_->ar_dma_={}; state_->audio_pll_={}; state_->boot_aram_.fill(0); state_->video_.reset(); for(auto& reg:state_->ave_registers_) reg.clear(); state_->fifo_sink_=nullptr; state_->mi_protection_=state_->mi_unknown_=0; state_->ipc_control_=state_->ipc_message_=state_->ipc_irq_flags_=0; state_->fifo_sync_=nullptr; state_->fifo_empty_=nullptr; state_->cp_registers_={}; state_->pe_registers_={}; state_->pe_token_pending_=state_->pe_finish_pending_=false; state_->gpu_token_event_=0; state_->gpu_finish_event_=false; state_->writes_.reset(); }
 void Memory::capture_dsp_boot_image(uint32_t address) {
     for(unsigned i=0;i<128;++i) state_->dsp_boot_image_[i]=static_cast<uint8_t>(read(address+i,1));
     state_->dsp_image_valid_=true;
@@ -604,8 +604,7 @@ void Memory::sync_gpu_events() {
 }
 void Memory::touch(uint32_t off,size_t size) {
     if(!size) return;
-    const auto revision=state_->write_revision_.fetch_add(1,std::memory_order_relaxed)+1;
-    for(size_t p=off/4096;p<=(uint64_t(off)+size-1)/4096;++p) state_->page_versions_[p].store(revision,std::memory_order_release);
+    state_->writes_.mark(off/4096,(uint64_t(off)+size-1)/4096);
 }
 std::span<const uint8_t> Memory::gpu_view(uint32_t address,size_t minimum) const {
     const auto off=offset(address,minimum);
@@ -621,9 +620,7 @@ void* Memory::gpu_writable(uint32_t address,size_t size) {
 uint64_t Memory::generation(const void* host,size_t size) const {
     auto base=reinterpret_cast<uintptr_t>(state_->bytes_.data()),p=reinterpret_cast<uintptr_t>(host);
     if(!size || p<base || p-base>state_->bytes_.size() || size>state_->bytes_.size()-(p-base)) return 0;
-    uint64_t latest=0;
-    for(size_t page=(p-base)/4096;page<=(p-base+size-1)/4096;++page) latest=std::max(latest,state_->page_versions_[page].load(std::memory_order_acquire));
-    return latest;
+    return state_->writes_.generation((p-base)/4096,(p-base+size-1)/4096);
 }
 void Memory::notify_gpu_write(const void* host,size_t size) {
     auto base=reinterpret_cast<uintptr_t>(state_->bytes_.data()),p=reinterpret_cast<uintptr_t>(host);

@@ -53,9 +53,11 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--explore", action="store_true", help="Build/run to inspect the next stop; does not claim checkpoint validation")
     parser.add_argument("--graphics", action="store_true", help="Build/run the native D3D12 backend")
+    parser.add_argument("--jobs", type=int, default=6, help="Parallel compiler jobs (default: 6)")
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--dsp-coefficients",type=Path,help="Local DSP coefficient file; copied only into private/boot")
     args=parser.parse_args()
+    if args.jobs<1: parser.error("--jobs must be positive")
     dol = ROOT / "private/extracted/RK5E01/DATA/sys/main.dol"
     if hashlib.sha256(dol.read_bytes()).hexdigest() != EXPECTED:
         raise ValueError("DOL hash mismatch")
@@ -107,7 +109,7 @@ def main():
                     f"-DKEY_ENABLE_GRAPHICS={'ON' if args.graphics else 'OFF'}",
                     f"-DKEY_AX_SOURCES={ax_sources.as_posix()}",
                     f"-DCMAKE_BUILD_TYPE={'Release' if args.graphics else 'Debug'}", f"-DKEY_PROBE_SOURCES={(out / 'sources.cmake').as_posix()}"], check=True)
-    subprocess.run(["cmake", "--build", str(build), "--parallel", "6"], check=True)
+    subprocess.run(["cmake", "--build", str(build), "--parallel", str(args.jobs)], check=True)
     if not args.explore:
         subprocess.run(["ctest", "--test-dir", str(build), "--output-on-failure"], check=True)
     wrong = out / "synthetic-wrong.dol"

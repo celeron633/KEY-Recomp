@@ -43,6 +43,8 @@ python tools/build_probe.py --graphics
 python tools/install_local.py
 ```
 
+`build_probe.py --jobs N` selects a positive number of compiler workers (default: 6). The development PC has also completed full builds with `--jobs 12`. Finish compilation before measuring game performance.
+
 Close the local game before replacing its EXE/DLL files. Do not remove saves to make a build succeed. The graphics configuration currently reuses dependency sources/caches from `private/build/aurora`; the current setup has not been validated as a complete clean-machine onboarding path. Record and resolve missing preparation steps instead of claiming these commands alone provide a finished installer. See the historical [P1 report](docs/P1-RESULTS.md) for translator experiments, not for the current runtime's limitations.
 
 ## Validation
@@ -54,7 +56,7 @@ python -m unittest discover -s tests -v
 ctest --test-dir private/build/graphics --output-on-failure
 ```
 
-The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 18 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
+The CTest command requires an existing configured/built graphics tree. The latest recorded baseline is 19 Python tests and 19 CTest cases; this is evidence from the last runtime change, not a guarantee for another machine or configuration. The audio output test uses SDL's dummy backend. Real-dump runs, graphical/input smoke checks, and manual gameplay checks provide separate evidence and must be reported separately.
 
 For memory-path comparisons, set `KEY_DISABLE_INLINE_RAM=1` in the child process environment before launch to use the original checked handlers; omit it for normal operation. Both routes enforce memory policy. Preserve the build manifest and five-second `TIMING` lines, and compare the same scene/input with compilation stopped. `game_root_hz` counts game-root task traversals; display-copy FPS alone is not a measurement of character velocity.
 
